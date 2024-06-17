@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime
+from flask_socketio import SocketIO, send, emit, join_room, leave_room
 
 app = Flask(__name__)
 
@@ -11,7 +12,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
+socketio = SocketIO(app)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -198,5 +199,31 @@ def apropos():
         return render_template("apropos.html", username=username)
     return render_template("apropos.html")
 
+# Ajouter les événements SocketIO
+@socketio.on('join')
+def on_join(data):
+    username = data['username']
+    room = data['room']
+    join_room(room)
+    send(username + ' a rejoint la salle ' + room, to=room)
+
+@socketio.on('leave')
+def on_leave(data):
+    username = data['username']
+    room = data['room']
+    leave_room(room)
+    send(username + ' a quitté la salle ' + room, to=room)
+
+@socketio.on('message')
+def handle_message(data):
+    room = data['room']
+    message = data['message']
+    username = data['username']
+    new_message = Message(content=message, group_id=room, user_id=username)  # Ajuster selon votre modèle
+    db.session.add(new_message)
+    db.session.commit()
+    timestamp = new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    emit('message', {'username': username, 'message': message, 'timestamp': timestamp}, to=room)
+
 if __name__ == '__main__':
-    app.run(host='10.101.4.78', debug=True)
+    app.run(host='192.168.1.20', debug=True)
