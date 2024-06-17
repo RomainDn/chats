@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+
+<html>
+
+<head> 
+    <title>A propos</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+   <header>
+        <nav>
+            <ul>
+                <li><a href="{{url_for ('home')}}">Accueil</a></li>
+                <li><a href="{{url_for ('chat')}}">Chat</a></li>
+                <li><a href="{{url_for ('logout')}}">Deconnexion</a></li>
+            </ul>
+        </nav>
+   </header>
+
+   <body>
+    <div class="account-container">
+        <h2>Account Information</h2>
+        <form id="update-form" method="post" action="{{ url_for('update_account') }}">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" value="{{ user.username }}" required>
+            <label for="prenom">Prénom</label>
+            <input type="text" id="prenom" name="prenom" value="{{ user.prenom }}" required>
+            <label for="nom">Nom</label>
+            <input type="text" id="nom" name="nom" value="{{ user.nom }}" required>
+            <label for="age">Age</label>
+            <input type="text" id="age" name="age" value="{{ user.age }}" required>
+            <button type="submit">Update</button>
+        </form>
+        <button class="delete-button" onclick="confirmDelete()">Delete Account</button>
+    </div>
+
+    <script>
+        function confirmDelete() {
+            if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+                window.location.href = "{{ url_for('delete_account') }}";
+            }
+        }
+    </script>
+   </body>
+   <footer>
+    <p>2024 © MYR</p>
+    <p> <a href="{{url_for ('apropos')}}">À propos</a></p>
+</footer>
+
+</html>

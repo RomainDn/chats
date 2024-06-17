@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head> 
+    <title>MYR</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{url_for ('home')}}">Accueil</a></li>
+                <li><a href="{{url_for ('chat')}}">Chat</a></li>
+                {% if username %}
+                    <li><a href="{{url_for ('account')}}">Account</a></li>
+                    <li><a href="{{url_for ('logout')}}">Deconnexion</a></li>
+                {% else %}
+                <li><a href="{{url_for ('login')}}">Connexion</a></li>
+                <li><a href="{{url_for ('register')}}">S'inscrire</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <img src="{{ url_for('static', filename='images/cadena.avif') }}" alt="cadena">
+        <h1>MYR: Vos conversations sécurisées</h1>
+        <section class="presentation">
+            <h2>Qu'est-ce que MYR ?</h2>
+            <p>MYR est un site internet qui vous permet de créer plusieurs salons de discussion avec vos amis de manière totalement sécurisée.</p>
+        </section>
+        <section>
+            <h2>Qui sommes-nous ?</h2>
+            <p>Nous sommes un groupe d'étudiants intéressés par la sécurité et nous pensons que le respect de la vie privée de chacun est indispensable.</p>
+        </section>
+    </main>
+    <footer>
+        <p>2024 © MYR</p>
+        <p><a href="{{url_for ('apropos')}}">À propos</a></p>
+    </footer>
+</body>
+</html>
