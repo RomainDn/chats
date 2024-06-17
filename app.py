@@ -20,15 +20,13 @@ class User(db.Model):
     nom = db.Column(db.String(80), nullable=False)
     password = db.Column(db.String(120), nullable=False)
     
-    # Relation avec les groupes où l'utilisateur est membre)
+    # Relation avec les groupes où l'utilisateur est membre
+    member_of_groups = db.relationship('Group', secondary='user_groups', backref='members')
 
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    
-    # Relation avec les utilisateurs membres du groupe
-    members = db.relationship('User', secondary='user_groups', backref='member_of_groups')
     
     # Relation avec les messages du groupe
     messages = db.relationship('Message', backref='group', lazy=True)
@@ -39,6 +37,11 @@ class Message(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User', backref='messages')
+
+
+    def __repr__(self):
+        return f"Message('{self.user_id}', '{self.content}', '{self.timestamp}')"
 
 class UserGroups(db.Model):
     __tablename__ = 'user_groups'
@@ -47,16 +50,14 @@ class UserGroups(db.Model):
 
 @app.route("/")
 def home():
-    if len(session) >0:
+    if 'username' in session:
         username = session['username']
-        return render_template("index.html",username=username)
+        return render_template("index.html", username=username)
     return render_template("index.html")
 
-
-@app.route("/login",  methods=['GET', 'POST'])
+@app.route("/login", methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        
         username = request.form['Username']
         password = request.form['Password']
         user = User.query.filter_by(username=username, password=password).first()
@@ -68,7 +69,7 @@ def login():
         return render_template('login.html', error='Invalid Credentials')
     return render_template("login.html")
 
-@app.route("/register",  methods=['GET', 'POST'])
+@app.route("/register", methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         prenom = request.form['Prenom']
@@ -77,11 +78,10 @@ def register():
         username = request.form['Username']
         password = request.form['Password']
 
-        print(f"Received data: {prenom}, {nom}, {age}, {username}, {password}")
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             return render_template('register.html', error='Username already exists')
-        new_user = User(username=username, password=password,prenom =prenom, age=age, nom=nom)
+        new_user = User(username=username, password=password, prenom=prenom, age=age, nom=nom)
         db.session.add(new_user)
         db.session.commit()
         session['username'] = new_user.username
@@ -101,18 +101,72 @@ def logout():
 
 @app.route("/chat", methods=["POST", "GET"])
 def chat():
-
-    if len(session) >0:
-        username = session['username']
-        return render_template("chat.html",username=username)
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        if user:
+            groups = user.member_of_groups
+            return render_template("chat.html", username=user.username, groups=groups)
     return render_template("chat.html")
+
+@app.route("/create-group", methods=['GET', 'POST'])
+def create_group():
+    if 'username' in session:
+        if request.method == 'POST':
+            group_name = request.form['Nom_du_groupe']
+            participant_ids = request.form.getlist('Participant[]')
+
+            current_user = User.query.filter_by(username=session['username']).first()
+            new_group = Group(name=group_name, created_by=current_user.id)
+            db.session.add(new_group)
+            db.session.commit()
+
+            if str(current_user.id) not in participant_ids:
+                participant_ids.append(str(current_user.id))
+
+            for user_id in participant_ids:
+                user = User.query.get(user_id)
+                if user:
+                    new_group.members.append(user)
+
+            db.session.commit()
+            return redirect(url_for('chat'))
+
+        users = User.query.all()
+        username = session['username']
+        return render_template("create_group.html", username=username, users=users)
+
+    return redirect(url_for('login'))
+
+@app.route("/group/<int:group_id>", methods=['GET'])
+def group(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        if group and user in group.members:
+            messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp.asc()).all()
+            print(messages)
+            return render_template("group.html", username=user.username, group=group, messages=messages)
+    return redirect(url_for('login'))
+
+@app.route("/send_message/<int:group_id>", methods=['POST'])
+def send_message(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        if group and user in group.members:
+            content = request.form['message']
+            new_message = Message(content=content, group_id=group_id, user_id=user.id)
+            db.session.add(new_message)
+            db.session.commit()
+            return redirect(url_for('group', group_id=group_id))
+    return redirect(url_for('login'))
 
 @app.route("/account")
 def account():
-    if len(session) >0:
+    if 'username' in session:
         user = User.query.filter_by(username=session['username']).first()
         username = session['username']
-        return render_template("account.html",username=username, user=user)
+        return render_template("account.html", username=username, user=user)
     return render_template("account.html")
 
 @app.route('/update_account', methods=['POST'])
@@ -139,11 +193,10 @@ def delete_account():
 
 @app.route("/apropos")
 def apropos():
-    if len(session) >0:
+    if 'username' in session:
         username = session['username']
-        return render_template("apropos.html",username=username)
+        return render_template("apropos.html", username=username)
     return render_template("apropos.html")
 
-
 if __name__ == '__main__':
-    app.run(host='192.168.1.20', debug=True)
+    app.run(host='10.101.14.46', debug=True)
