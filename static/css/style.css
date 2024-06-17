@@ -10,8 +10,6 @@ body {
     min-height: 100vh;
 }
 
-
-/* Header Styles */
 header {
     background: url("../images/header-pattern.webp"), #AF290C;
     padding: 20px 0;
@@ -43,18 +41,18 @@ nav ul li a:hover {
 }
 
 /* Main Content Styles */
-main {
+main, section {
     flex: 1;
     text-align: center;
     padding: 50px 20px;
 }
 
-h1 {
+h1, h2 {
     color: #150000;
     margin-bottom: 20px;
 }
 
-.presentation, section {
+.presentation, section, .account-container {
     margin: 20px auto;
     max-width: 800px;
     padding: 20px;
@@ -83,7 +81,8 @@ label {
 
 input[type="text"],
 input[type="password"],
-input[type="number"] {
+input[type="number"],
+select {
     width: 100%;
     padding: 10px;
     margin-bottom: 20px;
@@ -92,7 +91,7 @@ input[type="number"] {
     font-size: 16px;
 }
 
-input[type="submit"] {
+input[type="submit"], button {
     background-color: #AF290C;
     color: white;
     padding: 10px 20px;
@@ -103,8 +102,13 @@ input[type="submit"] {
     transition: background-color 0.3s;
 }
 
-input[type="submit"]:hover {
+input[type="submit"]:hover, button:hover {
     background-color: #FF927B;
+}
+
+.error {
+    color: red;
+    font-style: italic;
 }
 
 /* Footer Styles */
@@ -122,8 +126,32 @@ footer a {
     font-weight: bold;
 }
 
-
-.lien{
+/* Additional Styles */
+.lien {
     color: red;
     font-style: italic;
+}
+
+.account-container {
+    margin: 20px auto;
+    max-width: 600px;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+button.delete-button {
+    background-color: #AF290C;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button.delete-button:hover {
+    background-color: #FF927B;
 }

@@ -1,40 +1,49 @@
 <!DOCTYPE html>
-
 <html>
-
-<head> 
+<head>
     <title>chats</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-   <header>
-        <nav>
+<header>
+    <nav>
+        <ul>
+            <li><a href="{{url_for('home')}}">Accueil</a></li>
+            <li><a href="{{url_for('chat')}}">Chat</a></li>
+            {% if username %}
+                <li><a href="{{url_for('account')}}">Account</a></li>
+                <li><a href="{{url_for('logout')}}">Deconnexion</a></li>
+            {% else %}
+                <li><a href="{{url_for('login')}}">Connexion</a></li>
+                <li><a href="{{url_for('register')}}">S'inscrire</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</header>
+<body>
+    <section>
+        {% if username %}
+            <p>Bonjour {{ username }}</p>
+            <p>Voici vos groupes :</p>
             <ul>
-                <li><a href="{{url_for ('home')}}">Accueil</a></li>
-                
-                <li><a href="{{url_for ('chat')}}">Chat</a></li>
-                {% if username %}
-                    <li><a href="{{url_for ('account')}}">Account</a></li>
-                    <li><a href="{{url_for ('logout')}}">Deconnexion</a></li>
-                {% else %}
-                <li><a href="{{url_for ('login')}}">Connexion</a></li>
-                <li><a href="{{url_for ('register')}}">S'inscrire</a></li>
-                {% endif %}
+                {% for group in groups %}
+                    <li>
+                        <form action="{{ url_for('group', group_id=group.id) }}" method="get">
+                            <button type="submit">{{ group.name }}</button>
+                        </form>
+                    </li>
+                {% endfor %}
             </ul>
-        </nav>
-   </header>
-
-   <body>
-      {% if username %}
-      <p>Bonjour {{username}}</p>
-      <p>Voici vos groupes :</p>
-      {% else %}
-      <p>Veuillez-vous connecter pour voir vos groupes</p>
-      {% endif %}
-   </body>
-   <footer>
+            <form action="{{ url_for('create_group') }}" method="get">
+                <button type="submit">Créer un groupe</button>
+            </form>
+        {% else %}
+            <p>Veuillez-vous connecter pour voir vos groupes</p>
+        {% endif %}
+    </section>
+</body>
+<footer>
     <p>2024 © MYR</p>
-    <p> <a href="{{url_for ('apropos')}}">À propos</a></p>
+    <p><a href="{{url_for('apropos')}}">À propos</a></p>
 </footer>
-
 </html>
