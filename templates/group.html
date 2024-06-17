@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Groupe de discussion</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<header>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('home') }}">Accueil</a></li>
+            <li><a href="{{ url_for('chat') }}">Chat</a></li>
+            {% if username %}
+                <li><a href="{{ url_for('account') }}">Account</a></li>
+                <li><a href="{{ url_for('logout') }}">Deconnexion</a></li>
+            {% else %}
+                <li><a href="{{ url_for('login') }}">Connexion</a></li>
+                <li><a href="{{ url_for('register') }}">S'inscrire</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</header>
+<body>
+    <section>
+        {% if username %}
+            <h1>Groupe: {{ group.name }}</h1>
+            <div class="chat-box">
+                {% for message in messages %}
+                    <div class="message">
+                        <p><strong>{{ message.user.username }}</strong> <em>{{ message.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
+                        <p>{{ message.content }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+            <form action="{{ url_for('send_message', group_id=group.id) }}" method="post">
+                <textarea name="message" required></textarea>
+                <button type="submit">Envoyer</button>
+            </form>
+        {% else %}
+            <p>Veuillez-vous connecter pour accéder au groupe</p>
+        {% endif %}
+    </section>
+</body>
+<footer>
+    <p>2024 © MYR</p>
+    <p><a href="{{ url_for('apropos') }}">À propos</a></p>
+</footer>
+</html>
