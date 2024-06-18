@@ -28,7 +28,7 @@
             <h1>Groupe: {{ group.name }}</h1>
             <div class="chat-box" id="chat-box">
                 {% for message in messages %}
-                    <div class="message">
+                    <div class="message" data-message-id="{{ message.id }}" data-username="{{ message.user.username }}">
                         <p><strong>{{ message.user.username }}</strong> <em>{{ message.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
                         <p>{{ message.content }}</p>
                     </div>
@@ -38,6 +38,7 @@
                 <textarea id="message-input" name="message" required></textarea>
                 <button type="submit">Envoyer</button>
             </form>
+            <p><a href="{{ url_for('chat') }}">retour</a></p>
         {% else %}
             <p>Veuillez-vous connecter pour accéder au groupe</p>
         {% endif %}
@@ -51,14 +52,40 @@
         });
 
         socket.on('message', function(data) {
-            $('#chat-box').append('<div class="message"><p><strong>' + data.username + '</strong> <em>' + data.timestamp + '</em></p><p>' + data.message + '</p></div>');
+            $('#chat-box').append('<div class="message" data-message-id="' + data.id + '" data-username="' + data.username + '"><p><strong>' + data.username + '</strong> <em>' + data.timestamp + '</em></p><p>' + data.message + '</p></div>');
         });
 
         $('#message-form').submit(function(e) {
             e.preventDefault();
             var message = $('#message-input').val();
-            socket.emit('message', {'username': "{{ username }}", 'room': "{{ group.id }}", 'message': message});
-            $('#message-input').val('');
+            var username = "{{ username }}";  // Récupérer le nom d'utilisateur
+            var room = "{{ group.id }}";      // Récupérer l'identifiant du groupe
+            if (message) {
+                socket.emit('message', {'username': username, 'room': room, 'message': message});
+                $('#message-input').val('');
+            }
+        });
+
+        $(document).on('contextmenu', '.message', function(e) {
+            e.preventDefault();
+            var messageId = $(this).data('message-id');
+            var messageUsername = $(this).data('username');
+            if (messageUsername === "{{ username }}") {
+                if (confirm("Voulez-vous supprimer ce message ?")) {
+                    var messageDiv = $(this);
+                    $.ajax({
+                        url: '/delete_message/' + messageId,
+                        type: 'POST',
+                        success: function(result) {
+                            if (result === '') {
+                                messageDiv.remove();
+                            }
+                        }
+                    });
+                }
+            } else {
+                alert("Vous ne pouvez supprimer que vos propres messages.");
+            }
         });
     </script>
 </body>

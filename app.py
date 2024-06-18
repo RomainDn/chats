@@ -138,6 +138,52 @@ def create_group():
 
     return redirect(url_for('login'))
 
+@app.route("/details_group/<int:group_id>", methods=['GET', 'POST'])
+def details_group(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        users = User.query.all()
+        if request.method == 'POST':
+            group.name = request.form['Nom_du_groupe']
+            group.description = request.form['Description']
+            participant_ids = request.form.getlist('Participant[]')
+            group.members = [User.query.get(user_id) for user_id in participant_ids]
+            db.session.commit()
+            return redirect(url_for('details_group', group_id=group.id))
+        return render_template("details_group.html", group=group, users=users, username=user.username)
+    return redirect(url_for('login'))
+
+@app.route('/leave_group/<int:group_id>', methods=['POST'])
+def leave_group(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        
+        if group and user in group.members:
+            group.members.remove(user)
+            db.session.commit()
+            return redirect(url_for('chat'))
+    return redirect(url_for('login'))
+
+
+@app.route('/delete_group/<int:group_id>', methods=['POST'])
+def delete_group(group_id):
+    if 'username' in session:
+        group = Group.query.get(group_id)
+        if group:
+            # Supprimer tous les messages associés au groupe
+            Message.query.filter_by(group_id=group.id).delete()
+            db.session.commit()
+            
+            # Supprimer le groupe
+            db.session.delete(group)
+            db.session.commit()
+        return redirect(url_for('chat'))
+    return redirect(url_for('login'))
+
+
+
 @app.route("/group/<int:group_id>", methods=['GET'])
 def group(group_id):
     if 'username' in session:
@@ -161,6 +207,17 @@ def send_message(group_id):
             db.session.commit()
             return redirect(url_for('group', group_id=group_id))
     return redirect(url_for('login'))
+
+@app.route('/delete_message/<int:message_id>', methods=['POST'])
+def delete_message(message_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        message = Message.query.get(message_id)
+        if message and message.user_id == user.id:
+            db.session.delete(message)
+            db.session.commit()
+            return '', 204  # Success, no content
+    return '', 403  # Forbidden
 
 @app.route("/account")
 def account():
@@ -219,11 +276,16 @@ def handle_message(data):
     room = data['room']
     message = data['message']
     username = data['username']
-    new_message = Message(content=message, group_id=room, user_id=username)  # Ajuster selon votre modèle
-    db.session.add(new_message)
-    db.session.commit()
-    timestamp = new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-    emit('message', {'username': username, 'message': message, 'timestamp': timestamp}, to=room)
+    
+    user = User.query.filter_by(username=username).first()
+    
+    if user:
+        new_message = Message(content=message, group_id=room, user_id=user.id)
+        db.session.add(new_message)
+        db.session.commit()
+        timestamp = new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        emit('message', {'id': new_message.id, 'username': username, 'message': message, 'timestamp': timestamp}, to=room)
+
 
 if __name__ == '__main__':
     app.run(host='192.168.1.20', debug=True)

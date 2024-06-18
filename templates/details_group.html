@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Détails du groupe</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<header>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('home') }}">Accueil</a></li>
+            <li><a href="{{ url_for('chat') }}">Chat</a></li>
+            {% if username %}
+                <li><a href="{{ url_for('account') }}">Account</a></li>
+                <li><a href="{{ url_for('logout') }}">Deconnexion</a></li>
+            {% else %}
+                <li><a href="{{ url_for('login') }}">Connexion</a></li>
+                <li><a href="{{ url_for('register') }}">S'inscrire</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</header>
+<body>
+    <div class="account-container">
+        <h2>Groupe Information</h2>
+        <form id="update-form" method="post" action="{{ url_for('details_group', group_id=group.id) }}">
+            <label for="Nom_du_groupe">Nom du groupe</label>
+            <input type="text" id="Nom_du_groupe" name="Nom_du_groupe" value="{{ group.name }}" required>
+            <label for="Description">Description</label>
+            <input type="text" id="Description" name="Description" value="{{ group.description }}" >
+            <label for="Participant">Participant</label>
+            <select name="Participant[]" multiple required>
+                {% for user in users %}
+                    <option value="{{ user.id }}" {% if user in group.members %}selected{% endif %}>{{ user.username }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Mettre à jour</button>
+        </form>
+        <form id="delete-form" method="post" action="{{ url_for('delete_group', group_id=group.id) }}">
+            <button type="submit" class="delete-button">Supprimer le groupe</button>
+        </form>
+        <!-- Ajouter le formulaire pour quitter le groupe -->
+        <form id="leave-form" method="post" action="{{ url_for('leave_group', group_id=group.id) }}">
+            <button type="submit" class="leave-button">Quitter le groupe</button>
+        </form>
+        <p><a href="{{ url_for('chat') }}">retour</a></p>
+    </div>
+</body>
+<footer>
+    <p>2024 © MYR</p>
+    <p><a href="{{ url_for('apropos') }}">À propos</a></p>
+</footer>
+</html>

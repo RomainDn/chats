@@ -155,3 +155,21 @@ button.delete-button {
 button.delete-button:hover {
     background-color: #FF927B;
 }
+
+.leave-button {
+    background-color: #ff4d4d; /* Red background */
+    color: white; /* White text */
+    border: none;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.leave-button:hover {
+    background-color: #ff6666; /* Darker red background on hover */
+}
