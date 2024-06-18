@@ -84,11 +84,12 @@ def home():
     return render_template("index.html")
 
 @app.route("/login", methods=['GET', 'POST'])
+@app.route("/login", methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['Username']
         password = request.form['Password']
-        user = User.query.filter_by(username=username, password=password).first()
+        user = User.query.filter_by(username=username).first()
         if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
             session['username'] = user.username
             user.online = True
@@ -96,7 +97,6 @@ def login():
             return redirect(url_for('chat'))
         return render_template('login.html', error='Invalid Credentials')
     return render_template("login.html")
-
 @app.route("/register", methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -181,19 +181,26 @@ def group(group_id):
             private_key = serialization.load_pem_private_key(user.private_key.encode('utf-8'), password=None)
             decrypted_messages = []
             for message in messages:
-                decrypted_content = private_key.decrypt(
-                    bytes.fromhex(message.content),
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                ).decode('utf-8')
-                decrypted_messages.append({
-                    'username': message.user.username,
-                    'content': decrypted_content,
-                    'timestamp': message.timestamp
-                })
+                # Split the encrypted message string to handle multiple recipients
+                encrypted_messages = message.content.split('|')
+                for encrypted_message in encrypted_messages:
+                    try:
+                        decrypted_content = private_key.decrypt(
+                            bytes.fromhex(encrypted_message),
+                            padding.OAEP(
+                                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                                algorithm=hashes.SHA256(),
+                                label=None
+                            )
+                        ).decode('utf-8')
+                        decrypted_messages.append({
+                            'username': message.user.username,
+                            'content': decrypted_content,
+                            'timestamp': message.timestamp
+                        })
+                        break  # Break once the message is decrypted
+                    except Exception as e:
+                        continue  # Try the next encrypted message if decryption fails
             return render_template("group.html", username=user.username, group=group, messages=decrypted_messages)
     return redirect(url_for('login'))
 
@@ -204,25 +211,28 @@ def send_message(group_id):
         group = Group.query.get(group_id)
         if group and user in group.members:
             content = request.form['message']
-
-            # Encrypt the message with the recipient's public key
-            recipient = group.members[0]  # Assuming single recipient for simplicity
-            public_key = serialization.load_pem_public_key(recipient.public_key.encode('utf-8'))
-
-            encrypted_message = public_key.encrypt(
-                content.encode('utf-8'),
-                padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None
+            
+            # Encrypt the message with the public key of each group member
+            encrypted_messages = []
+            for recipient in group.members:
+                public_key = serialization.load_pem_public_key(recipient.public_key.encode('utf-8'))
+                encrypted_message = public_key.encrypt(
+                    content.encode('utf-8'),
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
                 )
-            )
+                encrypted_messages.append(encrypted_message.hex())
 
-            new_message = Message(content=encrypted_message.hex(), group_id=group_id, user_id=user.id)
+            # Store the encrypted messages
+            new_message = Message(content='|'.join(encrypted_messages), group_id=group_id, user_id=user.id)
             db.session.add(new_message)
             db.session.commit()
             return redirect(url_for('group', group_id=group_id))
     return redirect(url_for('login'))
+
 
 @app.route("/account")
 def account():
