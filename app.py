@@ -3,6 +3,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime
 from flask_socketio import SocketIO, send, emit, join_room, leave_room
+import bcrypt
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+
 
 app = Flask(__name__)
 
@@ -13,6 +19,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app)
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -20,9 +27,29 @@ class User(db.Model):
     age = db.Column(db.Integer, nullable=False)
     nom = db.Column(db.String(80), nullable=False)
     password = db.Column(db.String(120), nullable=False)
+    public_key = db.Column(db.Text, nullable=False)
+    private_key = db.Column(db.Text, nullable=False)
     
     # Relation avec les groupes où l'utilisateur est membre
     member_of_groups = db.relationship('Group', secondary='user_groups', backref='members')
+    
+    def generate_keys(self):
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        public_key = private_key.public_key()
+
+        self.private_key = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode('utf-8')
+
+        self.public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
 
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -62,7 +89,7 @@ def login():
         username = request.form['Username']
         password = request.form['Password']
         user = User.query.filter_by(username=username, password=password).first()
-        if user:
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
             session['username'] = user.username
             user.online = True
             db.session.commit()
@@ -82,7 +109,12 @@ def register():
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             return render_template('register.html', error='Username already exists')
-        new_user = User(username=username, password=password, prenom=prenom, age=age, nom=nom)
+        
+        
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom)
+        new_user.generate_keys()
         db.session.add(new_user)
         db.session.commit()
         session['username'] = new_user.username
@@ -145,8 +177,24 @@ def group(group_id):
         group = Group.query.get(group_id)
         if group and user in group.members:
             messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp.asc()).all()
-            print(messages)
-            return render_template("group.html", username=user.username, group=group, messages=messages)
+
+            private_key = serialization.load_pem_private_key(user.private_key.encode('utf-8'), password=None)
+            decrypted_messages = []
+            for message in messages:
+                decrypted_content = private_key.decrypt(
+                    bytes.fromhex(message.content),
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                ).decode('utf-8')
+                decrypted_messages.append({
+                    'username': message.user.username,
+                    'content': decrypted_content,
+                    'timestamp': message.timestamp
+                })
+            return render_template("group.html", username=user.username, group=group, messages=decrypted_messages)
     return redirect(url_for('login'))
 
 @app.route("/send_message/<int:group_id>", methods=['POST'])
@@ -156,7 +204,21 @@ def send_message(group_id):
         group = Group.query.get(group_id)
         if group and user in group.members:
             content = request.form['message']
-            new_message = Message(content=content, group_id=group_id, user_id=user.id)
+
+            # Encrypt the message with the recipient's public key
+            recipient = group.members[0]  # Assuming single recipient for simplicity
+            public_key = serialization.load_pem_public_key(recipient.public_key.encode('utf-8'))
+
+            encrypted_message = public_key.encrypt(
+                content.encode('utf-8'),
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+
+            new_message = Message(content=encrypted_message.hex(), group_id=group_id, user_id=user.id)
             db.session.add(new_message)
             db.session.commit()
             return redirect(url_for('group', group_id=group_id))
@@ -226,4 +288,4 @@ def handle_message(data):
     emit('message', {'username': username, 'message': message, 'timestamp': timestamp}, to=room)
 
 if __name__ == '__main__':
-    app.run(host='192.168.1.20', debug=True)
+    app.run(host='192.168.56.1', debug=True)
