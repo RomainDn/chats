@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime
 from flask_socketio import SocketIO, send, emit, join_room, leave_room
+import bcrypt
 
 app = Flask(__name__)
 
@@ -61,8 +62,8 @@ def login():
     if request.method == 'POST':
         username = request.form['Username']
         password = request.form['Password']
-        user = User.query.filter_by(username=username, password=password).first()
-        if user:
+        user = User.query.filter_by(username=username).first()
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
             session['username'] = user.username
             user.online = True
             db.session.commit()
@@ -82,7 +83,11 @@ def register():
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             return render_template('register.html', error='Username already exists')
-        new_user = User(username=username, password=password, prenom=prenom, age=age, nom=nom)
+        
+
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom)
         db.session.add(new_user)
         db.session.commit()
         session['username'] = new_user.username
@@ -288,4 +293,4 @@ def handle_message(data):
 
 
 if __name__ == '__main__':
-    app.run(host='192.168.1.20', debug=True)
+    app.run(host='192.168.56.1', debug=True)
