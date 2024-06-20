@@ -4,6 +4,9 @@ from flask_migrate import Migrate
 from datetime import datetime
 from flask_socketio import SocketIO, send, emit, join_room, leave_room
 import bcrypt
+import base64
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import serialization, hashes
 
 app = Flask(__name__)
 
@@ -14,6 +17,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app)
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -21,16 +25,34 @@ class User(db.Model):
     age = db.Column(db.Integer, nullable=False)
     nom = db.Column(db.String(80), nullable=False)
     password = db.Column(db.String(120), nullable=False)
+    public_key = db.Column(db.Text, nullable=False)
+    private_key = db.Column(db.Text, nullable=False)
     
-    # Relation avec les groupes où l'utilisateur est membre
     member_of_groups = db.relationship('Group', secondary='user_groups', backref='members')
+    
+    def generate_keys(self):
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        public_key = private_key.public_key()
+
+        self.private_key = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode('utf-8')
+
+        self.public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
 
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
-    # Relation avec les messages du groupe
     messages = db.relationship('Message', backref='group', lazy=True)
 
 class Message(db.Model):
@@ -41,9 +63,36 @@ class Message(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref='messages')
 
-
     def __repr__(self):
         return f"Message('{self.user_id}', '{self.content}', '{self.timestamp}')"
+
+    def encrypt_content(self, raw_content, public_key):
+        encrypted = public_key.encrypt(
+            raw_content.encode(),
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        return base64.b64encode(encrypted).decode('utf-8')
+
+    def decrypt_content(self, private_key):
+        encrypted_data = base64.b64decode(self.content)
+        decrypted = private_key.decrypt(
+            encrypted_data,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        return decrypted.decode('utf-8')
+
+    def __init__(self, content, group_id, user_id, public_key):
+        self.content = self.encrypt_content(content, public_key)
+        self.group_id = group_id
+        self.user_id = user_id
 
 class UserGroups(db.Model):
     __tablename__ = 'user_groups'
@@ -65,8 +114,6 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
             session['username'] = user.username
-            user.online = True
-            db.session.commit()
             return redirect(url_for('chat'))
         return render_template('login.html', error='Invalid Credentials')
     return render_template("login.html")
@@ -84,24 +131,19 @@ def register():
         if existing_user:
             return render_template('register.html', error='Username already exists')
         
-
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
         new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom)
+        new_user.generate_keys()
         db.session.add(new_user)
         db.session.commit()
         session['username'] = new_user.username
-        new_user.online = True
-        db.session.commit()
         return redirect(url_for('chat'))
     return render_template('register.html')
 
 @app.route('/logout')
 def logout():
     if 'username' in session:
-        user = User.query.filter_by(username=session['username']).first()
-        if user:
-            db.session.commit()
         session.pop('username', None)
     return redirect(url_for('login'))
 
@@ -151,7 +193,6 @@ def details_group(group_id):
         users = User.query.all()
         if request.method == 'POST':
             group.name = request.form['Nom_du_groupe']
-            group.description = request.form['Description']
             participant_ids = request.form.getlist('Participant[]')
             group.members = [User.query.get(user_id) for user_id in participant_ids]
             db.session.commit()
@@ -171,46 +212,17 @@ def leave_group(group_id):
             return redirect(url_for('chat'))
     return redirect(url_for('login'))
 
-
 @app.route('/delete_group/<int:group_id>', methods=['POST'])
 def delete_group(group_id):
     if 'username' in session:
         group = Group.query.get(group_id)
         if group:
-            # Supprimer tous les messages associés au groupe
             Message.query.filter_by(group_id=group.id).delete()
             db.session.commit()
             
-            # Supprimer le groupe
             db.session.delete(group)
             db.session.commit()
         return redirect(url_for('chat'))
-    return redirect(url_for('login'))
-
-
-
-@app.route("/group/<int:group_id>", methods=['GET'])
-def group(group_id):
-    if 'username' in session:
-        user = User.query.filter_by(username=session['username']).first()
-        group = Group.query.get(group_id)
-        if group and user in group.members:
-            messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp.asc()).all()
-            print(messages)
-            return render_template("group.html", username=user.username, group=group, messages=messages)
-    return redirect(url_for('login'))
-
-@app.route("/send_message/<int:group_id>", methods=['POST'])
-def send_message(group_id):
-    if 'username' in session:
-        user = User.query.filter_by(username=session['username']).first()
-        group = Group.query.get(group_id)
-        if group and user in group.members:
-            content = request.form['message']
-            new_message = Message(content=content, group_id=group_id, user_id=user.id)
-            db.session.add(new_message)
-            db.session.commit()
-            return redirect(url_for('group', group_id=group_id))
     return redirect(url_for('login'))
 
 @app.route('/delete_message/<int:message_id>', methods=['POST'])
@@ -221,8 +233,8 @@ def delete_message(message_id):
         if message and message.user_id == user.id:
             db.session.delete(message)
             db.session.commit()
-            return '', 204  # Success, no content
-    return '', 403  # Forbidden
+            return '', 204
+    return '', 403
 
 @app.route("/account")
 def account():
@@ -254,6 +266,39 @@ def delete_account():
             session.pop('username', None)
     return redirect(url_for('login'))
 
+@app.route("/group/<int:group_id>", methods=['GET'])
+def group(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        if group and user in group.members:
+            messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp.asc()).all()
+            private_key = serialization.load_pem_private_key(user.private_key.encode('utf-8'), password=None)
+            decrypted_messages = []
+            for msg in messages:
+                try:
+                    decrypted_content = msg.decrypt_content(private_key)
+                    decrypted_messages.append({'user_id': msg.user_id, 'content': decrypted_content, 'timestamp': msg.timestamp, 'user': msg.user})
+                except ValueError:
+                    continue  # Ignore messages that cannot be decrypted
+            return render_template("group.html", username=user.username, group=group, messages=decrypted_messages)
+    return redirect(url_for('login'))
+
+@app.route("/send_message/<int:group_id>", methods=['POST'])
+def send_message(group_id):
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
+        group = Group.query.get(group_id)
+        if group and user in group.members:
+            content = request.form['message']
+            for member in group.members:
+                public_key = serialization.load_pem_public_key(member.public_key.encode('utf-8'))
+                new_message = Message(content=content, group_id=group_id, user_id=user.id, public_key=public_key)
+                db.session.add(new_message)
+            db.session.commit()
+            return redirect(url_for('group', group_id=group_id))
+    return redirect(url_for('login'))
+
 @app.route("/apropos")
 def apropos():
     if 'username' in session:
@@ -261,7 +306,6 @@ def apropos():
         return render_template("apropos.html", username=username)
     return render_template("apropos.html")
 
-# Ajouter les événements SocketIO
 @socketio.on('join')
 def on_join(data):
     username = data['username']
@@ -283,14 +327,16 @@ def handle_message(data):
     username = data['username']
     
     user = User.query.filter_by(username=username).first()
+    group = Group.query.get(room)
     
-    if user:
-        new_message = Message(content=message, group_id=room, user_id=user.id)
-        db.session.add(new_message)
+    if user and group:
+        for member in group.members:
+            public_key = serialization.load_pem_public_key(member.public_key.encode('utf-8'))
+            new_message = Message(content=message, group_id=room, user_id=user.id, public_key=public_key)
+            db.session.add(new_message)
         db.session.commit()
         timestamp = new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S')
         emit('message', {'id': new_message.id, 'username': username, 'message': message, 'timestamp': timestamp}, to=room)
-
 
 if __name__ == '__main__':
     app.run(host='192.168.56.1', debug=True)
