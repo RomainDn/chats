@@ -24,6 +24,7 @@ class User(db.Model):
     prenom = db.Column(db.String(80), nullable=False)
     age = db.Column(db.Integer, nullable=False)
     nom = db.Column(db.String(80), nullable=False)
+    email = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
     public_key = db.Column(db.Text, nullable=False)
     private_key = db.Column(db.Text, nullable=False)
@@ -125,6 +126,7 @@ def register():
         nom = request.form['Nom']
         age = request.form['Age']
         username = request.form['Username']
+        email = request.form['email']
         password = request.form['Password']
 
         existing_user = User.query.filter_by(username=username).first()
@@ -133,7 +135,7 @@ def register():
         
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom)
+        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom, email=email)
         new_user.generate_keys()
         db.session.add(new_user)
         db.session.commit()
@@ -339,4 +341,4 @@ def handle_message(data):
         emit('message', {'id': new_message.id, 'username': username, 'message': message, 'timestamp': timestamp}, to=room)
 
 if __name__ == '__main__':
-    app.run(host='192.168.56.1', debug=True)
+    app.run(host='192.168.56.1', debug=False)
