@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Verify 2FA</title>
+  </head>
+  <body>
+    <h1>Enter your 2FA code</h1>
+    <form method="POST">
+      <label for="2fa_code">2FA Code:</label>
+      <input type="text" id="2fa_code" name="2fa_code" required>
+      <button type="submit">Verify</button>
+    </form>
+    {% if error %}
+      <p style="color:red;">{{ error }}</p>
+    {% endif %}
+  </body>
+</html>

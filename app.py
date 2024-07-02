@@ -7,6 +7,8 @@ import bcrypt
 import base64
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
+import pyotp
+import qrcode
 
 app = Flask(__name__)
 
@@ -28,6 +30,8 @@ class User(db.Model):
     password = db.Column(db.String(120), nullable=False)
     public_key = db.Column(db.Text, nullable=False)
     private_key = db.Column(db.Text, nullable=False)
+    otp_secret = db.Column(db.String(32), nullable=True)
+
     
     member_of_groups = db.relationship('Group', secondary='user_groups', backref='members')
     
@@ -113,9 +117,9 @@ def login():
         username = request.form['Username']
         password = request.form['Password']
         user = User.query.filter_by(username=username).first()
-        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')): #Compare le mot de passe saisi (après l'avoir haché avec le même sel) avec le mot de passe haché stocké. Si les deux correspondent, la vérification est réussie.
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
             session['username'] = user.username
-            return redirect(url_for('chat'))
+            return redirect(url_for('verify_2fa'))
         return render_template('login.html', error='Invalid Credentials')
     return render_template("login.html")
 
@@ -127,21 +131,49 @@ def register():
         age = request.form['Age']
         username = request.form['Username']
         email = request.form['email']
-        password = request.form['Password'] # Récupère le mot de passe saisi par l'utilisateur dans le formulaire d'enregistrement.
-
+        password = request.form['Password']
+        
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             return render_template('register.html', error='Username already exists')
         
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #  Génère un sel (salt) aléatoire pour renforcer la sécurité du hachage. Un sel est une valeur aléatoire ajoutée au mot de passe avant le hachage pour empêcher les attaques par table de hachage pré-calculées (rainbow tables).
-
-        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom, email=email) #Stocke le mot de passe haché dans la base de données après l'avoir décodé en chaîne de caractères pour l'enregistrement.
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        otp_secret = pyotp.random_base32()
+        new_user = User(username=username, password=hashed_password, prenom=prenom, age=age, nom=nom, email=email, otp_secret=otp_secret)
         new_user.generate_keys()
         db.session.add(new_user)
         db.session.commit()
+        
+        totp = pyotp.TOTP(otp_secret)
+        qr_url = totp.provisioning_uri(username, issuer_name="YourApp")
+        img = qrcode.make(qr_url)
+        img.save("static/qr_codes/{}.png".format(username))
+        
         session['username'] = new_user.username
-        return redirect(url_for('chat'))
+        return redirect(url_for('show_qr', username=username))
     return render_template('register.html')
+
+@app.route('/show_qr/<username>')
+def show_qr(username):
+    user = User.query.filter_by(username=username).first()
+    if user:
+        return render_template('show_qr.html', username=username, qr_code='static/qr_codes/{}.png'.format(username))
+    return redirect(url_for('login'))
+
+
+@app.route("/verify_2fa", methods=['GET', 'POST'])
+def verify_2fa():
+    if 'username' in session:
+        if request.method == 'POST':
+            code = request.form['2fa_code']
+            user = User.query.filter_by(username=session['username']).first()
+            totp = pyotp.TOTP(user.otp_secret)
+            if totp.verify(code):
+                return redirect(url_for('chat'))
+            return render_template('verify_2fa.html', error='Invalid 2FA code')
+        return render_template('verify_2fa.html')
+    return redirect(url_for('login'))
 
 @app.route('/logout')
 def logout():
