@@ -68,19 +68,19 @@ class Message(db.Model):
         return f"Message('{self.user_id}', '{self.content}', '{self.timestamp}')"
 
     def encrypt_content(self, raw_content, public_key):
-        encrypted = public_key.encrypt(
+        encrypted = public_key.encrypt(  #Utilise la clé publique du destinataire pour chiffrer le contenu du message.
             raw_content.encode(),
-            padding.OAEP(
+            padding.OAEP( # Utilise le schéma de remplissage OAEP avec SHA-256 pour sécuriser le chiffrement.
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
         )
-        return base64.b64encode(encrypted).decode('utf-8')
+        return base64.b64encode(encrypted).decode('utf-8') #Encode le message chiffré en base64 pour le stockage en texte.
 
     def decrypt_content(self, private_key):
         encrypted_data = base64.b64decode(self.content)
-        decrypted = private_key.decrypt(
+        decrypted = private_key.decrypt( #  Utilise la clé privée de l'utilisateur pour déchiffrer le contenu du message.
             encrypted_data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -113,7 +113,7 @@ def login():
         username = request.form['Username']
         password = request.form['Password']
         user = User.query.filter_by(username=username).first()
-        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')): #Compare le mot de passe saisi (après l'avoir haché avec le même sel) avec le mot de passe haché stocké. Si les deux correspondent, la vérification est réussie.
             session['username'] = user.username
             return redirect(url_for('chat'))
         return render_template('login.html', error='Invalid Credentials')
@@ -127,15 +127,15 @@ def register():
         age = request.form['Age']
         username = request.form['Username']
         email = request.form['email']
-        password = request.form['Password']
+        password = request.form['Password'] # Récupère le mot de passe saisi par l'utilisateur dans le formulaire d'enregistrement.
 
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             return render_template('register.html', error='Username already exists')
         
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #  Génère un sel (salt) aléatoire pour renforcer la sécurité du hachage. Un sel est une valeur aléatoire ajoutée au mot de passe avant le hachage pour empêcher les attaques par table de hachage pré-calculées (rainbow tables).
 
-        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom, email=email)
+        new_user = User(username=username, password=hashed_password.decode('utf-8'), prenom=prenom, age=age, nom=nom, email=email) #Stocke le mot de passe haché dans la base de données après l'avoir décodé en chaîne de caractères pour l'enregistrement.
         new_user.generate_keys()
         db.session.add(new_user)
         db.session.commit()
@@ -275,11 +275,11 @@ def group(group_id):
         group = Group.query.get(group_id)
         if group and user in group.members:
             messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp.asc()).all()
-            private_key = serialization.load_pem_private_key(user.private_key.encode('utf-8'), password=None)
+            private_key = serialization.load_pem_private_key(user.private_key.encode('utf-8'), password=None) #Charge la clé privée de l'utilisateur.
             decrypted_messages = []
             for msg in messages:
                 try:
-                    decrypted_content = msg.decrypt_content(private_key)
+                    decrypted_content = msg.decrypt_content(private_key) # Déchiffre le contenu de chaque message avec la clé privée de l'utilisateur.
                     decrypted_messages.append({'user_id': msg.user_id, 'content': decrypted_content, 'timestamp': msg.timestamp, 'user': msg.user})
                 except ValueError:
                     continue  # Ignore messages that cannot be decrypted
@@ -294,8 +294,8 @@ def send_message(group_id):
         if group and user in group.members:
             content = request.form['message']
             for member in group.members:
-                public_key = serialization.load_pem_public_key(member.public_key.encode('utf-8'))
-                new_message = Message(content=content, group_id=group_id, user_id=user.id, public_key=public_key)
+                public_key = serialization.load_pem_public_key(member.public_key.encode('utf-8')) # Charge la clé publique de chaque membre du groupe.
+                new_message = Message(content=content, group_id=group_id, user_id=user.id, public_key=public_key) #Chiffre le contenu du message avec la clé publique du membre avant de l'enregistrer.
                 db.session.add(new_message)
             db.session.commit()
             return redirect(url_for('group', group_id=group_id))
